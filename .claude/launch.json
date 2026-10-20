@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "ripple", "runtimeExecutable": "py", "runtimeArgs": ["-m", "ripple.app"], "port": 8765 }
+  ]
+}

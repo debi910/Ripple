@@ -189,9 +189,13 @@ def simulate(cfg, seed, out: Path):
     store_pop /= store_pop.sum(axis=1, keepdims=True)
 
     home = np.array([p["home_store"] for p in persons])
-    # People are creatures of habit: a personal affinity on top of what the store sells well.
-    pref = store_pop[home] * npr.lognormal(0, 1.2, size=(P, K))
-    pref_cdf = np.cumsum(pref / pref.sum(axis=1, keepdims=True), axis=1).astype(np.float32)
+    # People are creatures of habit: each shopper has a short list of regulars,
+    # drawn from what their store sells well, and buys from it most of the time.
+    FAV = 24
+    favourites = np.empty((P, FAV), dtype=np.int32)
+    for s in range(S):
+        m = np.nonzero(home == s)[0]
+        favourites[m] = npr.choice(K, size=(len(m), FAV), p=store_pop[s])
     activity = np.clip(npr.gamma(1.5, 0.06 / 1.5, size=P), 0.004, 0.45)
     acc_by_person = [[] for _ in range(P)]
     for a in accounts:
@@ -284,9 +288,12 @@ def simulate(cfg, seed, out: Path):
             l_person = np.repeat(buyers, n_lines)
             l_order = np.repeat(order_ids, n_lines)
             l_store = home[l_person]
-            # Each line is drawn from the shopper's own habits (inverse-CDF on their preference row).
-            u = npr.random(len(l_person))[:, None]
-            l_sku = np.minimum((pref_cdf[l_person] < u).sum(axis=1), K - 1)
+            # 70% of lines come from the shopper's regulars, the rest from the store's range.
+            l_sku = favourites[l_person, npr.integers(0, FAV, len(l_person))].astype(int)
+            explore = npr.random(len(l_person)) < 0.3
+            for s in range(S):
+                m = explore & (l_store == s)
+                l_sku[m] = npr.choice(K, size=m.sum(), p=store_pop[s])
             l_qty = npr.choice([1, 2, 3], size=len(l_person), p=[0.8, 0.15, 0.05])
 
             # Items the app shows as out of stock never make it into the basket.

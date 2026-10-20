@@ -80,10 +80,13 @@ UNION ALL SELECT 'causal', 'ci95', KIND, CI95, NULL FROM RIPPLE.CAUSAL_EFFECTS;
 
 -- Ledger: does the bill find the customers phantoms really touched?
 INSERT INTO RIPPLE.EVAL_METRICS
-SELECT 'ledger', 'phantom_exposures_captured', NULL,
-       (SELECT COUNT(*) FROM RIPPLE.EPISODE_EXPOSURES)
-       / (SELECT COUNT(*) FROM RIPPLE_GT.EXPOSURES WHERE DURING_PHANTOM), 'Order lines hit by real phantoms that the ledger bills'
-FROM DUAL
+WITH billed AS (SELECT DISTINCT ORDER_ID, SKU_ID FROM RIPPLE.EPISODE_EXPOSURES),
+     truth AS (SELECT DISTINCT ORDER_ID, SKU_ID FROM RIPPLE_GT.EXPOSURES WHERE DURING_PHANTOM),
+     both_ AS (SELECT COUNT(*) N FROM billed b JOIN truth r ON r.ORDER_ID = b.ORDER_ID AND r.SKU_ID = b.SKU_ID)
+SELECT 'ledger', 'exposure_recall', NULL, both_.N / (SELECT COUNT(*) FROM truth),
+       'Order lines broken by real phantoms that the ledger bills' FROM both_
+UNION ALL SELECT 'ledger', 'exposure_precision', NULL, both_.N / (SELECT COUNT(*) FROM billed),
+       'Billed order lines that real phantoms broke' FROM both_
 UNION ALL SELECT 'ledger', 'total_bill_inr', NULL, (SELECT SUM(TOTAL_INR) FROM RIPPLE.EPISODE_BILL), NULL FROM DUAL
 UNION ALL SELECT 'ledger', 'lost_sale_only_inr', NULL, (SELECT SUM(LOST_SALE_INR) FROM RIPPLE.EPISODE_BILL),
        'What a lost-sales report would show' FROM DUAL;

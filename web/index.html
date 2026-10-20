@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ripple · stock-out ripple ledger</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg viewBox="0 0 40 40" width="28" height="28" aria-hidden="true">
+      <circle cx="20" cy="20" r="4" class="r0"/><circle cx="20" cy="20" r="10" class="r1"/><circle cx="20" cy="20" r="17" class="r2"/>
+    </svg>
+    <span>Ripple</span>
+    <small>the full bill of every stock-out</small>
+  </div>
+  <nav>
+    <button data-view="bill" class="on">The bill</button>
+    <button data-view="recount">Recount list</button>
+    <button data-view="episode">Stock-out ripple</button>
+    <button data-view="proof">Proof</button>
+  </nav>
+  <div class="live" id="live" title="Time Exasol spent answering this view">Exasol · <b id="ms">–</b> ms</div>
+</header>
+
+<main>
+  <section id="view-bill" class="view on"></section>
+  <section id="view-recount" class="view"></section>
+  <section id="view-episode" class="view"></section>
+  <section id="view-proof" class="view"></section>
+</main>
+
+<div id="drawer" class="drawer" aria-hidden="true">
+  <button class="close" id="drawer-close" aria-label="Close">×</button>
+  <div id="drawer-body"></div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

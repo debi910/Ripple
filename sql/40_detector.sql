@@ -83,20 +83,24 @@ FROM (SELECT * FROM RIPPLE.DETECTOR_CALIBRATION WHERE LABEL = 'normal') n
 CROSS JOIN (SELECT * FROM RIPPLE.DETECTOR_CALIBRATION WHERE LABEL = 'phantom') p;
 
 -- 3. The filter. Inputs arrive ordered by day within each SKU-store group.
+--    Three variants run side by side in one pass: all signals, and two with
+--    silos removed, so the value of joining each one can be measured (ablation).
 CREATE OR REPLACE PYTHON3 SET SCRIPT RIPPLE.PHANTOM_FILTER(
     store_id DECIMAL(9,0), sku_id DECIMAL(9,0), d DATE,
     book_sod DECIMAL(9,0), book_eod DECIMAL(9,0), units DECIMAL(9,0), short_lines DECIMAL(9,0),
     pick_ex DECIMAL(9,0), stock_tickets DECIMAL(9,0), demand_index DOUBLE, counted BOOLEAN,
     onset DOUBLE, n_short DOUBLE, p_short DOUBLE, n_pick DOUBLE, p_pick DOUBLE,
-    n_ticket DOUBLE, p_ticket DOUBLE,
-    use_oms BOOLEAN, use_pick BOOLEAN, use_tickets BOOLEAN)
-EMITS (store_id DECIMAL(9,0), sku_id DECIMAL(9,0), d DATE, p_phantom DOUBLE, lambda_hat DOUBLE,
+    n_ticket DOUBLE, p_ticket DOUBLE)
+EMITS (variant VARCHAR(20), store_id DECIMAL(9,0), sku_id DECIMAL(9,0), d DATE, p_phantom DOUBLE, lambda_hat DOUBLE,
        llr_sales DOUBLE, llr_oms DOUBLE, llr_pick DOUBLE, llr_tickets DOUBLE) AS
 from math import lgamma, log, exp
 
 NB_K = 2.5          # negative-binomial dispersion: daily retail sales are over-dispersed
 STAY = 0.995        # a phantom rarely heals by itself unless stock arrives
 ALPHA = 0.08        # learning rate of the demand estimate
+WARMUP = 5          # days of history before the filter starts judging
+# variant -> (use order shorts, use picker log, use tickets)
+VARIANTS = {"all": (True, True, True), "pos_only": (False, False, False), "pos_tickets": (False, False, True)}
 
 def nb_logpmf(x, m):
     m = max(m, 1e-6)
@@ -107,77 +111,56 @@ def pois_logpmf(x, m):
     return x * log(m) - m - lgamma(x + 1)
 
 def run(ctx):
-    lam, warm, p = None, [], 0.0
+    warm = []
+    state = {v: {"lam": None, "p": 0.0} for v in VARIANTS}
     while True:
         store, sku, day = ctx.store_id, ctx.sku_id, ctx.d
         book_sod = ctx.book_sod if ctx.book_sod is not None else ctx.book_eod
         units, idx = float(ctx.units), max(ctx.demand_index or 1.0, 0.2)
         shorts, picks, tix = float(ctx.short_lines), float(ctx.pick_ex), float(ctx.stock_tickets)
         restocked = ctx.book_eod is not None and book_sod is not None and ctx.book_eod > book_sod
-        llr = [0.0, 0.0, 0.0, 0.0]
-
-        if lam is None:
+        # Short picks on a shelf that genuinely sold out (or held a single unit) are
+        # explained by demand, not by a phantom, so they carry no evidence.
+        sold_out = book_sod is not None and float(book_sod) - units <= 1
+        if len(warm) < WARMUP:
             warm.append(units + shorts)
-            if len(warm) >= 14:
-                lam = max(sum(warm) / len(warm), 0.02)
-            ctx.emit(store, sku, day, 0.0, lam, 0.0, 0.0, 0.0, 0.0)
-        elif book_sod <= 0:
-            # Visibly out of stock: the app hides the item, nothing to infer.
-            p = 0.0
-            ctx.emit(store, sku, day, 0.0, lam, 0.0, 0.0, 0.0, 0.0)
-        else:
+            if len(warm) == WARMUP:
+                for st in state.values():
+                    st["lam"] = max(sum(warm) / WARMUP, 0.02)
+        for v, (use_oms, use_pick, use_tix) in VARIANTS.items():
+            st = state[v]
+            lam = st["lam"]
+            if lam is None or book_sod is None or book_sod <= 0:
+                # Warming up, or visibly out of stock: the app hides the item, nothing to infer.
+                st["p"] = 0.0
+                ctx.emit(v, store, sku, day, 0.0, lam, 0.0, 0.0, 0.0, 0.0)
+                continue
             m = lam * idx
-            prior = p * STAY + (1 - p) * ctx.onset
-            # Sales: a phantom shelf sells (almost) nothing.
-            llr[0] = (log(0.98) if units == 0 else log(1e-3)) - nb_logpmf(units, m)
-            # Short picks on a shelf that genuinely sold out (or held a single unit) are
-            # explained by demand, not by a phantom, so they carry no evidence.
-            sold_out = float(book_sod) - units <= 1
-            if ctx.use_oms and not sold_out:
-                llr[1] = pois_logpmf(shorts, ctx.p_short * m) - pois_logpmf(shorts, ctx.n_short * m)
-            if ctx.use_pick and not sold_out:
-                llr[2] = pois_logpmf(picks, ctx.p_pick * m) - pois_logpmf(picks, ctx.n_pick * m)
-            if ctx.use_tickets:
-                llr[3] = pois_logpmf(tix, ctx.p_ticket * m + 0.002) - pois_logpmf(tix, ctx.n_ticket * m + 0.002)
-            logit = log(prior / (1 - prior)) + sum(llr)
-            logit = max(min(logit, 30), -30)
+            prior = st["p"] * STAY + (1 - st["p"]) * ctx.onset
+            llr_sales = (log(0.98) if units == 0 else log(1e-3)) - nb_logpmf(units, m)
+            llr_oms = pois_logpmf(shorts, ctx.p_short * m) - pois_logpmf(shorts, ctx.n_short * m) if use_oms and not sold_out else 0.0
+            llr_pick = pois_logpmf(picks, ctx.p_pick * m) - pois_logpmf(picks, ctx.n_pick * m) if use_pick and not sold_out else 0.0
+            llr_tix = pois_logpmf(tix, ctx.p_ticket * m + 0.002) - pois_logpmf(tix, ctx.n_ticket * m + 0.002) if use_tix else 0.0
+            logit = max(min(log(prior / (1 - prior)) + llr_sales + llr_oms + llr_pick + llr_tix, 30), -30)
             p = 1 / (1 + exp(-logit))
-            ctx.emit(store, sku, day, p, lam, llr[0], llr[1], llr[2], llr[3])
+            st["p"] = p
+            ctx.emit(v, store, sku, day, p, lam, llr_sales, llr_oms, llr_pick, llr_tix)
             if p < 0.5:
-                lam += ALPHA * (1 - p) * ((units + shorts) / idx - lam)
-                lam = max(lam, 0.02)
+                st["lam"] = max(lam + ALPHA * (1 - p) * ((units + shorts) / idx - lam), 0.02)
         if restocked or ctx.counted:
-            p = 0.0  # stock arrived or the shelf was counted: the book is true again
+            for st in state.values():
+                st["p"] = 0.0  # stock arrived or the shelf was counted: the book is true again
         if not ctx.next():
             break
 /
 
--- 4. Run the filter with all signals, and twice more with signals removed, so
---    the value of joining each silo can be measured (ablation).
+-- 4. Score every SKU in every store; Exasol runs one filter per group in parallel.
 CREATE OR REPLACE TABLE RIPPLE.PHANTOM_SCORES AS
-SELECT 'all' AS VARIANT, f.* FROM (
-    SELECT RIPPLE.PHANTOM_FILTER(d.STORE_ID, d.SKU_ID, d.D, d.BOOK_SOD, d.BOOK_EOD, d.UNITS, d.SHORT_LINES,
-               d.PICK_EX, d.STOCK_TICKETS, d.DEMAND_INDEX, d.COUNT_BOOK IS NOT NULL,
-               p.ONSET_HAZARD, p.N_SHORT, p.P_SHORT, p.N_PICK, p.P_PICK, p.N_TICKET, p.P_TICKET,
-               TRUE, TRUE, TRUE ORDER BY d.D)
-    FROM RIPPLE.SKU_DAY d CROSS JOIN RIPPLE.DETECTOR_PARAMS p
-    GROUP BY d.STORE_ID, d.SKU_ID) f
-UNION ALL
-SELECT 'pos_only', f.* FROM (
-    SELECT RIPPLE.PHANTOM_FILTER(d.STORE_ID, d.SKU_ID, d.D, d.BOOK_SOD, d.BOOK_EOD, d.UNITS, d.SHORT_LINES,
-               d.PICK_EX, d.STOCK_TICKETS, d.DEMAND_INDEX, d.COUNT_BOOK IS NOT NULL,
-               p.ONSET_HAZARD, p.N_SHORT, p.P_SHORT, p.N_PICK, p.P_PICK, p.N_TICKET, p.P_TICKET,
-               FALSE, FALSE, FALSE ORDER BY d.D)
-    FROM RIPPLE.SKU_DAY d CROSS JOIN RIPPLE.DETECTOR_PARAMS p
-    GROUP BY d.STORE_ID, d.SKU_ID) f
-UNION ALL
-SELECT 'pos_tickets', f.* FROM (
-    SELECT RIPPLE.PHANTOM_FILTER(d.STORE_ID, d.SKU_ID, d.D, d.BOOK_SOD, d.BOOK_EOD, d.UNITS, d.SHORT_LINES,
-               d.PICK_EX, d.STOCK_TICKETS, d.DEMAND_INDEX, d.COUNT_BOOK IS NOT NULL,
-               p.ONSET_HAZARD, p.N_SHORT, p.P_SHORT, p.N_PICK, p.P_PICK, p.N_TICKET, p.P_TICKET,
-               FALSE, FALSE, TRUE ORDER BY d.D)
-    FROM RIPPLE.SKU_DAY d CROSS JOIN RIPPLE.DETECTOR_PARAMS p
-    GROUP BY d.STORE_ID, d.SKU_ID) f;
+SELECT RIPPLE.PHANTOM_FILTER(d.STORE_ID, d.SKU_ID, d.D, d.BOOK_SOD, d.BOOK_EOD, d.UNITS, d.SHORT_LINES,
+           d.PICK_EX, d.STOCK_TICKETS, d.DEMAND_INDEX, d.COUNT_BOOK IS NOT NULL,
+           p.ONSET_HAZARD, p.N_SHORT, p.P_SHORT, p.N_PICK, p.P_PICK, p.N_TICKET, p.P_TICKET ORDER BY d.D)
+FROM RIPPLE.SKU_DAY d CROSS JOIN RIPPLE.DETECTOR_PARAMS p
+GROUP BY d.STORE_ID, d.SKU_ID;
 
 -- 5. Episodes: runs of days the filter believes are phantom (p >= 0.9),
 --    back-dated to the first silent day of the run.
