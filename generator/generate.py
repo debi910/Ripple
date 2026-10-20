@@ -25,7 +25,7 @@ SCALES = {
     # stores, persons, days, brands per group
     "tiny": dict(stores=4, persons=4_000, days=60, brands=2),
     "demo": dict(stores=12, persons=40_000, days=120, brands=3),
-    "large": dict(stores=40, persons=400_000, days=180, brands=5),
+    "large": dict(stores=30, persons=200_000, days=180, brands=4),
 }
 
 START_DATE = dt.date(2026, 3, 1)
@@ -442,14 +442,22 @@ def write_all(out, cfg, seed, stores, skus, accounts, persons, order_rows, line_
     write_csv(out / "accounts.csv", acc_cols, [[a[c] for c in acc_cols] for a in accounts])
     write_csv(out / "orders.csv", ["order_id", "account_id", "store_id", "ordered_at"], order_rows)
 
-    lines = []
-    for ch in line_chunks:
-        fs = np.where(ch["fulfilled_sku"] >= 0, sku_ids[np.maximum(ch["fulfilled_sku"], 0)], 0)
-        for oid, ln, k, q, f, st in zip(ch["order_id"], ch["line_no"], ch["sku"], ch["qty"], fs, ch["status"]):
-            lines.append((int(oid), int(ln), int(sku_ids[k]), int(q), int(f) if f else "", st,
-                          skus[(int(f) if f else int(sku_ids[k])) - 1]["price"]))
-    write_csv(out / "order_lines.csv", ["order_id", "line_no", "sku_id", "qty", "fulfilled_sku_id", "line_status",
-                                        "unit_price"], lines)
+    import pandas as pd
+    price_by_idx = np.array([sk["price"] for sk in skus])
+    n_lines = 0
+    with open(out / "order_lines.csv", "w", newline="", encoding="utf-8") as f:
+        f.write("order_id,line_no,sku_id,qty,fulfilled_sku_id,line_status,unit_price\r\n")
+        for ch in line_chunks:
+            got = ch["fulfilled_sku"] >= 0
+            df = pd.DataFrame({
+                "order_id": ch["order_id"], "line_no": ch["line_no"], "sku_id": sku_ids[ch["sku"]], "qty": ch["qty"],
+                "fulfilled_sku_id": pd.array(np.where(got, sku_ids[np.maximum(ch["fulfilled_sku"], 0)], 0), dtype="Int64"),
+                "line_status": ch["status"],
+                "unit_price": price_by_idx[np.where(got, ch["fulfilled_sku"], ch["sku"])],
+            })
+            df.loc[~got, "fulfilled_sku_id"] = pd.NA
+            df.to_csv(f, header=False, index=False, lineterminator="\r\n")
+            n_lines += len(df)
     write_csv(out / "pick_exceptions.csv", ["store_id", "sku_id", "pick_date", "order_id", "reason"], pick_rows)
     write_csv(out / "returns.csv", ["return_id", "order_id", "line_no", "return_date", "reason_code", "refund_amount"],
               return_rows)
@@ -483,8 +491,8 @@ def write_all(out, cfg, seed, stores, skus, accounts, persons, order_rows, line_
               [(i + 1, dates[c], round(float(churn_attrib[i]), 4)) for i, c in enumerate(churn_day) if c >= 0])
     with open(out / "MANIFEST.txt", "w") as f:
         f.write(f"seed={seed}\nconfig={cfg}\nstart_date={START_DATE}\n")
-        f.write(f"phantom_events={len(events)} orders={len(order_rows)} lines={len(lines)} tickets={len(ticket_rows)}\n")
-    print(f"phantom events={len(events)} orders={len(order_rows)} lines={len(lines)} tickets={len(ticket_rows)} "
+        f.write(f"phantom_events={len(events)} orders={len(order_rows)} lines={n_lines} tickets={len(ticket_rows)}\n")
+    print(f"phantom events={len(events)} orders={len(order_rows)} lines={n_lines} tickets={len(ticket_rows)} "
           f"returns={len(return_rows)} churned={(churn_day >= 0).sum()}")
 
 

@@ -193,7 +193,7 @@ async function openPerson(pid, ep) {
   const total = d.receipts.reduce((a, r) => a + r.inr, 0);
   const why = l => [l.email_eq ? "same mailbox" : "", l.phone_eq ? "same phone" : "", l.pin_eq ? "same pincode" : "",
                     l.name_agree !== "differ" ? l.name_agree.replace("_", " ") + " name" : "",
-                    l.basket_cos >= 0.2 ? "similar baskets (" + l.basket_cos + ")" : ""].filter(Boolean).join(", ");
+                    l.basket_cos >= 0.3 ? "similar baskets (" + l.basket_cos + ")" : ""].filter(Boolean).join(", ");
   $("#drawer-body").innerHTML = `
     <h1>${esc(d.accounts[0]?.name)}</h1>
     <p class="lede">${d.accounts.length} account${d.accounts.length > 1 ? "s" : ""} resolved to one shopper inside Exasol.</p>
@@ -229,7 +229,7 @@ async function renderProof() {
       <div class="card"><h1>Joining the silos is what makes it work</h1>
         <p class="lede">The same filter, fed fewer systems.</p>
         <div class="bars">${variants.map(([v, l]) => `<div class="row"><div>${l}</div><div class="track"><div class="fill" style="width:${m("detector", "recall", v) * 100}%"></div></div><div class="val">${pct(m("detector", "recall", v))}</div></div>`).join("")}</div>
-        <div class="bars">${variants.map(([v, l]) => `<div class="row"><div class="muted">days to alert</div><div class="track"><div class="fill alt" style="width:${m("detector", "days_onset_to_alert", v) / 10 * 100}%"></div></div><div class="val">${num(m("detector", "days_onset_to_alert", v), 1)} d</div></div>`).join("")}</div>
+        <div class="bars">${variants.map(([v, l]) => `<div class="row"><div class="muted">${l}: days to alert</div><div class="track"><div class="fill alt" style="width:${m("detector", "days_onset_to_alert", v) / 10 * 100}%"></div></div><div class="val">${num(m("detector", "days_onset_to_alert", v), 1)} d</div></div>`).join("")}</div>
       </div>
       <div class="card"><h1>How much churn a stock-out causes</h1>
         <p class="lede">Matched natural experiment: shoppers who hit a phantom against same-store, same-habit shoppers who did not, the same week.</p>
