@@ -56,8 +56,8 @@ holds the demo world comfortably and the large world too.
 Python 3.11 or newer.
 
 ```bash
-git clone https://github.com/debi910/ripple.git
-cd ripple
+git clone https://github.com/debi910/Ripple.git
+cd Ripple
 python -m pip install -r requirements.txt
 ```
 
