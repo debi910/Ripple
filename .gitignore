@@ -3,3 +3,8 @@ __pycache__/
 *.pyc
 .venv/
 .env
+video/raw/
+video/*.mp4
+video/*.m4a
+video/*.wav
+video/*.mp3

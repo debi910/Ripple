@@ -1,0 +1,30 @@
+[
+  {
+    "scene": "01 The bill",
+    "t": 0.0
+  },
+  {
+    "scene": "02 Recount list",
+    "t": 25.0
+  },
+  {
+    "scene": "03 Stock-out ripple",
+    "t": 65.0
+  },
+  {
+    "scene": "04 Make good",
+    "t": 100.0
+  },
+  {
+    "scene": "05 Proof",
+    "t": 120.0
+  },
+  {
+    "scene": "06 Under the hood and close",
+    "t": 155.0
+  },
+  {
+    "scene": "end",
+    "t": 172.0
+  }
+]
