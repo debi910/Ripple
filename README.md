@@ -17,6 +17,23 @@ are: a stock-out found too late becomes a return that erodes margin, then a
 churn signal sitting in a support ticket, written by a customer each system
 sees differently.
 
+![Ripple's first screen: 542 silent stock-outs cost ₹21.0 lakh while reports show ₹4.9 lakh](docs/img/the-bill.png)
+
+## For evaluators: two minutes
+
+| Criterion | Where to look | What it shows |
+|---|---|---|
+| Innovation & impact (25%) | [The problem](#the-problem), [Why this is not another dashboard](#why-this-is-not-another-dashboard) | All four Track 2 problems treated as one chain, priced in rupees, with a recount list and make-good offers that act on it |
+| Effective use of Exasol (25%) | [How Ripple uses Exasol Personal](#how-ripple-uses-exasol-personal) | Python SET UDFs, a Lua script, in-database entity resolution and causal SQL; 5.8M order lines on a laptop |
+| Technical excellence (20%) | [Results](#results-demo-world-seed-42), [docs/METHOD.md](docs/METHOD.md) | Every engine scored against an answer key, beating the textbook baselines, with a stress test and published-research grounding |
+| Design & UX (15%) | the app (`python -m ripple.app`) or the demo video | One story per screen: the bill, what to count, who was hit, who to make good, and the proof |
+| Docs & reproducibility (10%) | [docs/RUN_GUIDE.md](docs/RUN_GUIDE.md) | One command rebuilds everything from a seed |
+| Open source (5%) | [LICENSE](LICENSE) | MIT, synthetic data, no external services |
+
+**In one sentence:** a shelf the system thinks is full but is actually empty
+costs far more than the lost sale, and Ripple finds it in a day and a half,
+follows every affected customer across five systems, and proves each number.
+
 ---
 
 ## The problem
