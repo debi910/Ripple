@@ -36,9 +36,24 @@ quick-commerce retailer day by day:
   has a list of regulars and orders at a personal rate.
 * **The ripple.** A paid line that hits a phantom is either substituted with a
   sibling (55%) or refunded as missing. Substitutes come back 25% of the time
-  under generic reason codes. 18–30% of affected shoppers write a ticket within
-  two days, often from an address no account carries. Every bad experience
-  raises a decaying churn hazard, and shoppers order less before they leave.
+  under generic reason codes. By default 4% of shoppers with a missing item
+  write a ticket within two days (fewer for a swap), often from an address no
+  account carries. Every bad experience raises a decaying churn hazard, and
+  shoppers order less before they leave.
+
+### Simulator settings against published numbers
+
+| Setting | Ripple's world | Published | Source |
+|---|---|---|---|
+| Stock records wrong | phantoms on ~0.1% of SKU-days, all "book > 0, shelf = 0" | ~65% of records off, mostly small errors | DeHoratius & Raman 2008; UK grocer 2025 |
+| Complaint rate | 4% of shoppers with a missing item (`--ticket-rate`) | about 1 in 26 unhappy customers complains | TARP |
+| Substitution on a short pick | 55% | 26% switch brand in store; quick commerce substitutes by default | Gruen, Corsten & Bharadwaj 2002 |
+| Substitutes returned | 25% | 30–45% of online grocery shoppers dislike their substitutes | Hoang & Breugelmans 2023 |
+| Churn effect of a stock-out | true lift ~12 points over eight weeks after a missing item | later spend down ~17% over 13 months | Anderson, Fitzsimons & Simester 2006 |
+
+The stress sweep (`python -m ripple.sweep`) rebuilds the world at 2%, 4%, 10%
+and 25% complaint rates. The Proof tab shows the detector does not depend on
+customers writing in.
 
 The simulator writes its answer key to `RIPPLE_GT`: true phantom intervals,
 true account owners, ticket intents and products, exposures, churn dates and
@@ -134,7 +149,27 @@ The recount list ranks open alerts by **expected saving**: P(phantom) × daily
 demand × cost per broken line in that category × days until the next scheduled
 count. The app can replay it for any past morning using only data up to then.
 
-## 6. Evaluation (`sql/90_eval.sql`)
+## 6. Make-good list (`sql/80_makegood.sql`)
+
+Most shoppers a phantom hits never write in. Ripple ranks the silent ones by
+expected margin recovered minus the credit offered, and drafts one message
+each. The policy follows field evidence:
+
+* a small credit, never a bare apology: in Uber's 1.5-million-rider experiment
+  a $5 coupon lifted spending and an apology alone did nothing, while repeated
+  apologies backfired (Halperin, Ho, List & Muir);
+* one offer per shopper, however many stock-outs hit them;
+* a second hit within four weeks is weighted 1.5×, because a repeat failure is
+  the worst case (Knox & van Oest 2014);
+* no blanket discounts, which hurt long-run demand (Anderson, Fitzsimons &
+  Simester 2006);
+* the message names a substitute the shopper has bought before, which is far
+  more likely to be accepted (Hoang & Breugelmans 2023).
+
+Credits, the repeat weight and the assumed recovery rate (35%) live in
+`RIPPLE.MAKEGOOD_POLICY`.
+
+## 7. Evaluation (`sql/90_eval.sql`, `sql/95_baselines.sql`)
 
 The only stage that reads `RIPPLE_GT`. It writes `RIPPLE.EVAL_METRICS`:
 identity pair precision and recall; ticket owner, intent and SKU accuracy;
@@ -146,6 +181,42 @@ A detector alert counts as correct if it fires between a true phantom's first
 day and the day after it ends. Recall counts true phantoms with at least one
 such alert.
 
+`95_baselines.sql` scores the methods from the literature on the same answer
+key:
+
+* **Zero-sales rule** (Kang & Gershwin 2005): alert after N zero-sales days on
+  a stocked item, with the best N picked in hindsight, which flatters it.
+* **Day-level AUC** for Ripple's posterior and for the zero-run length, to sit
+  beside the 0.67 that Farias, Li & Peng report for pooled matrix completion on
+  real data with injected anomalies.
+* **Recount policies** with the same budget of 3 counts per store per day:
+  Ripple's list, longest silence first, and random counts. Each is credited
+  with the empty shelf-days it ends early, times the shelf's expected daily
+  loss.
+* **Make-good targeting**: the true churn rate of listed silent shoppers
+  against unlisted ones.
+
+## Related work
+
+| Work | What it shows | How Ripple relates |
+|---|---|---|
+| DeHoratius & Raman 2008, *Management Science* | ~65% of 370k SKU-store records wrong; category matters more than store | Theft-prone categories get a higher phantom hazard |
+| UK grocer study 2025, arXiv 2506.05357 | 64.7% of counts off; a targeted audit lifted sales 11.2% (32% on overstated items) | Supports the recount list; partial errors are a known limit |
+| Kang & Gershwin 2005, *IIE Transactions* | 1% silent stock loss can lose 17% of demand as replenishment freezes; reset after N zero days | Our replenishment follows the book, so it freezes; their rule is our baseline |
+| DeHoratius, Mersereau & Schrage 2008, *MSOM* | Keep a distribution over true stock and audit by it | Ripple's filter is the two-state version; the recount list is an audit policy |
+| Mersereau 2015, *MSOM* | Ignoring record errors biases demand estimates down | Demand only learns on days the filter believes are normal |
+| Kök & Shang 2007, *MSOM* | When to inspect; cycle counting is near optimal | Ripple ranks counts by value; a picker-hours budget is a known limit |
+| Farias, Li & Peng 2024, *MSOM* | Phantoms cost up to 4% of revenue; pooled matrix completion, AUC 0.67, injected anomalies | We report AUC on the same kind of test; pooling across stores is future work |
+| Gruen, Corsten & Bharadwaj 2002, GMA | 8.3% of items out of stock; shopper responses | Substitution, refund and exit paths in the ledger |
+| Anderson, Fitzsimons & Simester 2006, *Management Science* | Stock-outs cut later spend as much as the lost sale; frequent buyers hit most | The reason for the matched causal design |
+| Hoang & Breugelmans 2023, *Journal of Retailing* | 30–45% dislike substitutes; familiar ones are accepted | Returned substitutes billed; make-good names a familiar one |
+| Knox & van Oest 2014, *Journal of Marketing* | Complaints raise churn; a repeat failure is worst | Repeat hits weigh more on the make-good list |
+| Halperin, Ho, List & Muir, NBER | Coupons recover spend; bare apologies don't | Make-good offers a credit, once |
+| TARP 1999 | About 1 in 26 unhappy customers complains | Default complaint rate and the stress sweep |
+| Fellegi–Sunter, as in Splink (UK MoJ) | Log-odds match weights, learned by EM | Same form; our weights are set by hand (a known limit) |
+| Petersen & Kumar 2009, *Journal of Marketing* | Returns are not all bad | Only returns of phantom-caused substitutes are billed |
+| Bernstein, Oct 2026 | Quick-commerce in-stock 82.5–94.4% | Our target customer, today |
+
 ## Known limits
 
 * The world is synthetic. Effect sizes (churn hazard, ticket rates) are
@@ -153,5 +224,12 @@ such alert.
 * The causal design needs at least six weeks of follow-up, so the last weeks of
   data inform the ledger only through effects estimated on earlier cohorts.
 * Identity resolution misses accounts that share nothing but a common name and
-  pincode (recall about 84%). We chose precision over recall, because a false
-  merge would bill one shopper's churn to another.
+  pincode (recall about 83%). We chose precision over recall, because a false
+  merge would bill one shopper's churn to another. Match weights are set by
+  hand; learning them by EM, as Splink does, is a natural next step.
+* Only full phantoms are modelled ("book > 0, shelf = 0"). The UK grocer study
+  shows most real errors are small (±10 units) and a quarter are understated.
+* The causal outcome is order silence. A BG/NBD "probability still active"
+  model (Fader, Hardie & Lee 2005) would narrow the gap to the true effect.
+* Counting is treated as free; a daily picker-hours budget (Kök & Shang 2007)
+  is only used in the baseline comparison.

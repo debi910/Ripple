@@ -27,7 +27,7 @@ document.querySelectorAll("nav button").forEach(b => b.onclick = () => show(b.da
 function show(view) {
   document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.view === view));
   document.querySelectorAll(".view").forEach(v => v.classList.toggle("on", v.id === "view-" + view));
-  ({ bill: renderBill, recount: renderRecount, episode: renderEpisode, proof: renderProof })[view]();
+  ({ bill: renderBill, recount: renderRecount, episode: renderEpisode, makegood: renderMakegood, proof: renderProof })[view]();
   history.replaceState(null, "", "#" + view + (view === "episode" && state.episode ? "/" + state.episode : ""));
 }
 function openEpisode(id) { state.episode = id; show("episode"); }
@@ -206,12 +206,45 @@ async function openPerson(pid, ep) {
   $("#drawer").classList.add("on");
 }
 
+
+// ---------------------------------------------------------------- make good
+async function renderMakegood() {
+  const el = $("#view-makegood");
+  if (state.loaded.makegood) return;
+  const d = await api("/api/makegood");
+  const sm = d.summary[0];
+  const pol = Object.fromEntries(d.policy.map(p => [p.item, p.val]));
+  el.innerHTML = `
+    <p class="lede">About 1 in 26 unhappy customers ever complains, so the shoppers most likely to leave quietly never reach
+      the helpdesk. Ripple ranks the ones a phantom hit who stayed silent by the money at stake, and suggests one small offer each.</p>
+    <div class="grid g4">
+      <div class="card tile"><div class="k">Silent shoppers hit</div><div class="v">${num(sm.silent)}</div><div class="s">of ${num(sm.hit)} hit; the rest wrote in</div></div>
+      <div class="card tile"><div class="k">Worth a make-good</div><div class="v">${num(sm.shoppers)}</div><div class="s">${num(sm.repeat_hits)} hit twice within four weeks</div></div>
+      <div class="card tile"><div class="k">Credit offered</div><div class="v">${inr(sm.credit)}</div><div class="s">expected to win back ${inr(sm.recovered)}</div></div>
+      <div class="card tile"><div class="k">Net, after the credit</div><div class="v">${inr(sm.net)}</div><div class="s">${num(sm.known_substitute)} offers name a substitute they bought before</div></div>
+    </div>
+    <h2>Who to contact first</h2>
+    <div class="card"><table><thead><tr><th class="r">#</th><th>What happened</th><th>Offer</th><th class="r">At risk</th><th class="r">Credit</th><th class="r">Net</th></tr></thead>
+      <tbody>${d.items.map(r => `<tr class="click" data-p="${r.person_id}" data-ep="${r.episode_id}">
+        <td class="r muted">${r.priority}</td>
+        <td>${esc(r.sku)} ${r.kind === "missing" ? "missing" : "swapped"} on ${esc(r.hit_date)}<br><span class="muted">${esc(r.store)}</span>
+          ${r.repeat_hit ? ' <span class="pill bad">second hit</span>' : ""}</td>
+        <td style="max-width:420px">${esc(r.message)}${r.bought_before ? ' <span class="pill acc">bought before</span>' : ""}</td>
+        <td class="r">${inr(r.at_risk)}</td><td class="r">${inr(r.credit)}</td><td class="r"><b>${inr(r.net)}</b></td></tr>`).join("")}</tbody></table>
+      <div class="note">Policy from field evidence: a small credit, never a bare apology (Halperin, Ho, List &amp; Muir); one offer per shopper;
+        repeat hits weighted ${pol.repeat_multiplier}× (Knox &amp; van Oest); no blanket discounts (Anderson, Fitzsimons &amp; Simester); a substitute the shopper already trusts (Hoang &amp; Breugelmans).
+        Assumed recovery rate ${pct(pol.recovery_rate)}; every value lives in <span class="mono">RIPPLE.MAKEGOOD_POLICY</span>.</div></div>`;
+  el.querySelectorAll("[data-p]").forEach(r => r.onclick = () => openPerson(+r.dataset.p, +r.dataset.ep));
+  state.loaded.makegood = true;
+}
+
 // ---------------------------------------------------------------- proof
 async function renderProof() {
   const el = $("#view-proof");
   if (state.loaded.proof) return;
   const d = await api("/api/proof");
   const m = (a, k, v = null) => d.metrics.find(x => x.area === a && x.metric === k && (v === null || x.variant === v))?.val;
+  const b = (a, k, v) => d.baselines.find(x => x.area === a && x.metric === k && x.approach === v)?.val;
   const sc = d.scale[0];
   const variants = [["pos_only", "Sales data only"], ["pos_tickets", "+ customer tickets"], ["all", "+ order shorts and picker logs"]];
   const ce = Object.fromEntries(d.causal.map(c => [c.kind, c]));
@@ -249,8 +282,37 @@ async function renderProof() {
         <div class="note">Python UDFs score tickets and run the per-SKU filter in parallel groups; a Lua script closes the identity graph; the rest is SQL.</div>
       </div>
     </div>
+    <h2>Against the textbook baselines</h2>
+    <div class="grid g2">
+      <div class="card"><h1>Detector vs the zero-sales rule</h1>
+        <p class="lede">Kang &amp; Gershwin's rule flags N zero-sales days on a stocked item. We gave it the best N in hindsight (${num(b("detector", "best_n", "zero_sales_rule"))} days).</p>
+        <table><thead><tr><th></th><th class="r">Caught</th><th class="r">Precision</th><th class="r">Days to alert</th><th class="r">Day-level AUC</th></tr></thead><tbody>
+        ${[["ripple", "Ripple"], ["zero_sales_rule", "Zero-sales rule"]].map(([k, l]) => `<tr><td>${l}</td><td class="r">${pct(b("detector", "recall", k))}</td>
+          <td class="r">${pct(b("detector", "precision", k))}</td><td class="r">${num(b("detector", "days_onset_to_alert", k), 1)}</td><td class="r">${num(b("detector", "auc_day_level", k), 3)}</td></tr>`).join("")}</tbody></table>
+        <div class="note">For scale: Farias, Li &amp; Peng (2024) report an AUC of 0.67 for pooled matrix completion on real store data with injected anomalies.</div>
+      </div>
+      <div class="card"><h1>Which shelves to count</h1>
+        <p class="lede">Same budget for every policy: 3 counts per store per day, scored on rupees saved before each phantom would otherwise end.</p>
+        <div class="bars">${[["ripple", "Ripple list"], ["zero_sales_walk", "Longest silence first"], ["random", "Random counts"]].map(([k, l]) => `
+          <div class="row"><div>${l}</div><div class="track"><div class="fill" style="width:${b("recount", "inr_saved", k) / b("recount", "inr_saved", "ripple") * 100}%"></div></div><div class="val">${inr(b("recount", "inr_saved", k))}</div></div>`).join("")}</div>
+        <div class="note">${esc(d.baselines.find(x => x.metric === "inr_saved" && x.approach === "ripple")?.note || "")}</div>
+      </div>
+    </div>
+    ${sweepCard(d.sweep)}
     <p class="note">Ledger coverage: ${pct(m("ledger", "exposure_recall"))} of the order lines real phantoms broke are on the bill, and ${pct(m("ledger", "exposure_precision"))} of billed lines were broken by a real phantom.</p>`;
   state.loaded.proof = true;
+}
+
+function sweepCard(rows) {
+  if (!rows.length) return "";
+  const rates = [...new Set(rows.map(r => r.rate))].sort((a, c) => a - c);
+  const get = (rate, v, metric) => rows.find(r => r.rate === rate && r.variant === v && r.metric === metric)?.val;
+  return `<h2>Stress test: what if almost nobody complains?</h2>
+    <div class="card"><p class="lede">The same world rebuilt at different complaint rates. Research puts it near 4% (TARP: about 1 in 26).</p>
+    <table><thead><tr><th>Shoppers who write in</th><th class="r">Caught, all systems</th><th class="r">Days to alert</th><th class="r">Caught, sales only</th></tr></thead><tbody>
+    ${rates.map(r => `<tr><td>${pct(r)}</td><td class="r"><b>${pct(get(r, "all", "recall"))}</b></td><td class="r">${num(get(r, "all", "days_onset_to_alert"), 1)}</td>
+      <td class="r muted">${pct(get(r, "pos_only", "recall"))}</td></tr>`).join("")}</tbody></table>
+    <div class="note">Short picks and picker logs carry the detector; tickets sharpen it when customers do write.</div></div>`;
 }
 
 // ---------------------------------------------------------------- charts
@@ -293,9 +355,9 @@ const iso = d => d.toISOString().slice(0, 10);
 // ---------------------------------------------------------------- boot
 const [v, ep] = location.hash.slice(1).split("/");
 if (ep) state.episode = +ep;
-show(["bill", "recount", "episode", "proof"].includes(v) ? v : "bill");
+show(["bill", "recount", "episode", "makegood", "proof"].includes(v) ? v : "bill");
 window.addEventListener("hashchange", () => {
   const [hv, he] = location.hash.slice(1).split("/");
   if (he) state.episode = +he;
-  if (["bill", "recount", "episode", "proof"].includes(hv)) show(hv);
+  if (["bill", "recount", "episode", "makegood", "proof"].includes(hv)) show(hv);
 });

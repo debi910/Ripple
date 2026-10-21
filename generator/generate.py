@@ -35,6 +35,9 @@ HIGH_SHRINK = {"Personal Care", "Baby Care", "Pharma"}
 CHURN_BASE = 1 / 500                   # baseline daily churn hazard
 CHURN_BETA = 2.5                       # hazard multiplier per unit of bad-experience stock
 EXPOSURE_DECAY = np.exp(-1 / 28)       # bad experiences fade over about four weeks
+# Share of shoppers with a missing item who write in. TARP's research puts complainers at
+# about 1 in 26 unhappy customers; swapped items and availability questions are rarer still.
+TICKET_RATE = 0.04
 SEVERITY = {"missing": 1.0, "substituted": 0.6, "returned": 0.4}
 
 
@@ -165,7 +168,8 @@ def build_people(rng: random.Random, n_persons: int, stores):
 
 # --------------------------------------------------------------------------- simulation
 
-def simulate(cfg, seed, out: Path):
+def simulate(cfg, seed, out: Path, ticket_rate: float = TICKET_RATE):
+    cfg = {**cfg, "ticket_rate": ticket_rate}
     t0 = time.time()
     rng = random.Random(seed)
     npr = np.random.default_rng(seed)
@@ -303,7 +307,7 @@ def simulate(cfg, seed, out: Path):
                     acc = rng.choice(acc_by_person[l_person[i]])
                     notify_rows.append((acc, int(l_store[i]) + 1, skus[l_sku[i]]["sku_id"],
                                         str(dt.datetime.combine(date, dt.time()) + dt.timedelta(minutes=rng.randint(420, 1380)))))
-                if rng.random() < 0.03:
+                if rng.random() < 0.1 * ticket_rate:
                     pending_tickets.setdefault(day + rng.randint(0, 2), []).append(
                         (int(l_person[i]), "availability_query", int(l_sku[i]), -1, None))
             keep = ~visible_oos
@@ -361,7 +365,7 @@ def simulate(cfg, seed, out: Path):
                 if rng.random() < 0.35:
                     pick_rows.append((int(l_store[i]) + 1, skus[l_sku[i]]["sku_id"], str(date), int(l_order[i]),
                                       "substituted" if kind == "substituted" else "not_found"))
-                p_ticket = 0.30 if kind == "missing" else 0.18
+                p_ticket = ticket_rate if kind == "missing" else 0.6 * ticket_rate
                 if rng.random() < p_ticket:
                     intent = "missing_item" if kind == "missing" else "substitution_complaint"
                     pending_tickets.setdefault(day + rng.choice([0, 0, 1, 1, 2]), []).append(
@@ -500,9 +504,11 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--scale", choices=SCALES, default="demo")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--ticket-rate", type=float, default=TICKET_RATE,
+                    help="share of shoppers with a missing item who raise a ticket (default %(default)s)")
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args()
-    simulate(SCALES[args.scale], args.seed, args.out or Path("data") / args.scale)
+    simulate(SCALES[args.scale], args.seed, args.out or Path("data") / args.scale, args.ticket_rate)
 
 
 if __name__ == "__main__":

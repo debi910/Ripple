@@ -80,6 +80,8 @@ python -m ripple.build                 # demo: 12 stores, 40k shoppers, 120 days
 python -m ripple.build --scale large   # 30 stores, 200k shoppers, 180 days
 python -m ripple.build --scale tiny    # a quick smoke test
 python -m ripple.build --seed 7        # a different world, same method
+python -m ripple.build --ticket-rate 0.25   # customers complain far more than the default 4%
+python -m ripple.sweep                 # stress test at 2%, 4%, 10% and 25% complaint rates
 ```
 
 This generates CSVs into `data/<scale>/`, bulk-loads them with Exasol `IMPORT`
@@ -105,7 +107,8 @@ python -m ripple.app                   # http://localhost:8765
 | **The bill** | Total cost of all phantom stock-outs against the lost-sale view, the five-system chain, cost by category, the most expensive episodes |
 | **Recount list** | The morning list per store, ranked by expected saving, with the evidence behind each alert. Drag the date to replay any morning |
 | **Stock-out ripple** | One episode: its timeline, every shopper it touched (merged across accounts), and each shopper's receipts |
-| **Proof** | Every engine scored against the simulator's answer key, the ablation, the causal check, the calibration and the stage timings |
+| **Make good** | Silent shoppers a phantom hit, ranked by money at stake, each with a drafted offer and a substitute they bought before |
+| **Proof** | Every engine scored against the simulator's answer key, the textbook baselines, the complaint-rate stress test, the ablation, the causal check, the calibration and the stage timings |
 
 The number at the top right is how long Exasol took to answer the current view.
 

@@ -181,6 +181,15 @@ def person(person_id: int, episode_id: int | None = None):
     )
 
 
+def _sweep():
+    """The complaint-rate stress test, if `python -m ripple.sweep` has been run."""
+    try:
+        return q("""SELECT TICKET_RATE AS rate, VARIANT AS variant, METRIC AS metric, VAL AS val
+                    FROM RIPPLE_BENCH.SWEEP WHERE AREA = 'detector' ORDER BY TICKET_RATE""")
+    except Exception:
+        return [], 0.0
+
+
 @app.get("/api/proof")
 def proof():
     return reply(
@@ -189,11 +198,34 @@ def proof():
         calibration=q("SELECT * FROM RIPPLE.DETECTOR_CALIBRATION ORDER BY LABEL"),
         timings=q("""SELECT STAGE AS stage, SUM(SECONDS) AS seconds, MAX(RUN_AT) AS run_at FROM RIPPLE.RUN_TIMINGS
                      GROUP BY STAGE ORDER BY STAGE"""),
+        baselines=q("SELECT AREA AS area, METRIC AS metric, APPROACH AS approach, VAL AS val, NOTE AS note "
+                    "FROM RIPPLE.BASELINE_METRICS"),
+        sweep=_sweep(),
         scale=q("""SELECT (SELECT COUNT(*) FROM RIPPLE_RAW.ORDER_LINES) AS order_lines,
                           (SELECT COUNT(*) FROM RIPPLE_RAW.INVENTORY_BOOK) AS sku_days,
                           (SELECT COUNT(*) FROM RIPPLE_RAW.ORDERS) AS orders,
                           (SELECT COUNT(*) FROM RIPPLE_RAW.TICKETS) AS tickets,
                           (SELECT COUNT(*) FROM RIPPLE_RAW.ACCOUNTS) AS accounts FROM DUAL"""),
+    )
+
+
+@app.get("/api/makegood")
+def makegood(limit: int = 40):
+    return reply(
+        summary=q("""
+            SELECT COUNT(*) AS shoppers, SUM(CREDIT_INR) AS credit, SUM(EXPECTED_RECOVERED_INR) AS recovered,
+                   SUM(NET_INR) AS net, SUM(REPEAT_HIT) AS repeat_hits,
+                   SUM(CASE WHEN BOUGHT_BEFORE > 0 THEN 1 ELSE 0 END) AS known_substitute,
+                   (SELECT COUNT(*) FROM RIPPLE.MAKEGOOD_BASE) AS hit,
+                   (SELECT SUM(SILENT) FROM RIPPLE.MAKEGOOD_BASE) AS silent
+            FROM RIPPLE.MAKEGOOD_LIST"""),
+        policy=q("SELECT ITEM AS item, VAL AS val, NOTE AS note FROM RIPPLE.MAKEGOOD_POLICY"),
+        items=q("""
+            SELECT PRIORITY AS priority, PERSON_ID AS person_id, KIND AS kind, REPEAT_HIT AS repeat_hit,
+                   STORE_NAME AS store, SKU_NAME AS sku, SUB_NAME AS sub, BOUGHT_BEFORE AS bought_before,
+                   CLV_6M AS clv, AT_RISK_INR AS at_risk, CREDIT_INR AS credit, NET_INR AS net,
+                   HIT_DATE AS hit_date, EPISODE_ID AS episode_id, MESSAGE AS message
+            FROM RIPPLE.MAKEGOOD_LIST ORDER BY PRIORITY LIMIT {limit!d}""", {"limit": limit}),
     )
 
 

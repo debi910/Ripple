@@ -8,7 +8,7 @@ duplicate accounts, through the substitution, the return, the angry ticket and
 the quiet exit, and prices each step with a receipt.
 
 > A stock-out is not one lost sale. On our demo retailer, the lost-sales view
-> says **₹4.4 lakh**. Ripple's ledger says **₹25.1 lakh**: 5.7 times as much,
+> says **₹4.9 lakh**. Ripple's ledger says **₹21.0 lakh**: 4.3 times as much,
 > spread across three systems that never talk to each other.
 
 Track 2 of the Exasol hackathon (Customers, Channels & Demand) lists four
@@ -30,14 +30,26 @@ admits.
 * Inventory distortion costs retail about **$1.7 trillion a year**, and
   out-of-stocks account for about $1.2 trillion of that
   ([IHL Group](https://www.ihlservices.com/product/fixing-inventory-distortion-whos-winning-whos-failing-whats-working/)).
-* Audits of major chains found errors in **more than 65% of SKU-store
-  inventory records**. *Phantom inventory* never raises a stock-out alert,
-  because the system believes the shelf is full
-  ([Farias, Li & Peng](https://arxiv.org/pdf/2006.13126v1)).
+* **Two in three store stock records are wrong.** About 65% of 370,000
+  SKU-store records in a US chain
+  ([DeHoratius & Raman 2008](https://ideas.repec.org/a/inm/ormnsc/v54y2008i4p627-641.html)),
+  and 64.7% of 150,000 counts at a UK grocer in 2025
+  ([arXiv 2506.05357](https://arxiv.org/pdf/2506.05357)), where a targeted
+  audit lifted sales 11.2%. *Phantom inventory* never raises a stock-out
+  alert, because the system believes the shelf is full, and it can cost up to
+  4% of revenue ([Farias, Li & Peng 2024](https://arxiv.org/pdf/2006.13126)).
+* **It hits quick commerce right now.** In October 2026 Bernstein found
+  in-stock rates of 94.4% at Blinkit and 82.5% at Zepto across 150 SKUs, with
+  Zepto losing 11 points through the day
+  ([via Ascendants](https://ascendants.in/?p=34772)).
+* **The customer cost is as big as the lost sale.** Stock-outs cut a
+  customer's later spending by about as much as the sale itself
+  ([Anderson, Fitzsimons & Simester 2006](https://www.kellogg.northwestern.edu/faculty/anderson_e/htm/personalpage_files/Papers/Measuring_and_Mitigating_the_Costs_of_Stockouts.pdf)).
 * Shoppers return about **16% of what they buy**, around $850B in the US in 2025
   ([NRF via SupplyChain247](https://www.supplychain247.com/article/2025-retail-returns-hit-850-billion)).
-* Most unhappy customers never complain. Each ticket stands for several silent
-  ones.
+* **Tickets undercount the damage.** Only about 1 in 26 unhappy customers
+  complains ([TARP](https://customerthink.com/improving_government_by_solving_complaints_is_good_solving_the_silent_complaints_is_better/)),
+  so the shoppers most likely to leave quietly never reach the helpdesk.
 
 **What existing tools miss:** each tool sees one system. Demand planners
 see stock records, not the customer saying "app shows in stock but never
@@ -68,52 +80,82 @@ up.
    a return, a ticket or a person.
 6. **Tells each store what to count tomorrow,** ranked by expected money saved
    before the next scheduled count, not by probability alone.
+7. **Makes good with the silent shoppers.** It ranks the people a phantom hit
+   who never wrote in by the money at stake, and drafts one small, concrete
+   offer each, following published field evidence on what recovery works.
 
 ## Why this is not another dashboard
 
 * **Measured accuracy.** The simulator writes an answer key that Ripple never
   reads. Every number below is scored against it, live, on the Proof tab.
-* **An ablation that shows why joining silos matters.** The same filter with
-  sales alone catches 65% of phantoms, about eight days late. With all four
-  systems it catches 88% in about a day and a half.
+* **It beats the textbook baselines.** The classic "N zero-sales days" rule
+  (Kang & Gershwin), even with the best N picked in hindsight, catches 49% of
+  phantoms after 15 days. Ripple catches 91% in a day and a half. With the
+  same budget of three counts per store per day, Ripple's recount list saves
+  2.8× what "longest silence first" saves and 6.4× random counts.
+* **It doesn't need customers to complain.** Grounded in published rates, only
+  4% of affected shoppers write in. A stress sweep from 2% to 25% keeps
+  detection between 87% and 91%: short picks and picker logs carry it.
+* **An ablation that shows why joining silos matters.** Sales data alone
+  catches 65% of phantoms, eight days late. Adding short picks and picker logs
+  takes it to 91% in a day and a half.
 * **A causal estimate, not a correlation.** Shoppers who hit a stock-out
-  differ from those who don't. The matched design removes that, and the Proof
-  tab checks the estimate against the true effect.
-* **Receipts.** Click any shopper and see every cost line with its source row.
-* **Self-calibration.** No hand-tuned thresholds. The detector learns its
-  emission rates from cycle counts the retailer already has.
+  differ from those who don't (Anderson, Fitzsimons & Simester show frequent
+  buyers hit the most). The matched design removes that, and the Proof tab
+  checks the estimate against the true effect.
+* **It acts, not just reports.** Every rupee is a receipt, every store gets a
+  recount list, and the silent shoppers get a make-good offer designed from
+  field experiments on what recovery works.
+* **Self-calibration.** The detector learns its emission rates from cycle
+  counts the retailer already has.
 
 ## Results (demo world, seed 42)
 
 12 dark stores · 267 SKUs · 40,000 shoppers with 70,107 accounts · 120 days ·
-266k orders · 841k order lines · 11.7k tickets · 526 injected phantom stock-outs
+263k orders · 834k order lines · 7.0k tickets · 504 injected phantom stock-outs ·
+4% of affected shoppers complain
 
 | Engine | Metric | Result |
 |---|---|---|
-| Phantom detector, all four systems | stock-outs caught / alert precision | **87.6%** / 83.7% |
+| Phantom detector, all four systems | stock-outs caught / alert precision | **90.7%** / 86.2% |
 | | days from empty shelf to alert | **1.6** |
-| | days before the stock record would be corrected | **14.6** |
-| Detector, POS sales only | caught / days to alert | 64.8% / 8.1 |
-| Detector, POS + tickets | caught / days to alert | 69.6% / 5.8 |
+| | days before the stock record would be corrected | **14.2** |
+| | day-level AUC | 0.989 |
+| Detector, POS sales only | caught / days to alert | 65.5% / 8.0 |
+| Zero-sales rule (best N = 17, hindsight) | caught / precision / days to alert | 49.4% / 81.9% / 15.0 |
+| Recount list, 3 counts per store per day | rupees saved: Ripple / longest silence / random | **₹31.5 L** / ₹11.3 L / ₹4.9 L |
 | Identity graph | merged pairs correct (precision) / recall | **99.9%** / 83.0% |
-| | 70,107 accounts resolved to | 44,540 people (true: 40,000) |
-| Ticket reader | intent accuracy (8 intents) | **96.4%** |
-| | right shopper (of linked tickets) / exact SKU on complaints | 99.3% / 85.3% |
-| Causal churn | lift in lost-shopper rate after a missing item | **+5.6 pts ± 1.5** (true effect +12.1) |
-| | after a substitution | +1.4 pts ± 1.4 (true +6.5) |
-| Ledger | broken lines billed that a real phantom caused / real ones billed | 95.7% / 98.5% |
-| | total bill vs. lost-sale view | **₹25.1 L vs ₹4.4 L (5.7×)** |
+| | 70,107 accounts resolved to | 44,541 people (true: 40,000) |
+| Ticket reader | intent accuracy (8 intents) | **96.3%** |
+| | right shopper (of linked tickets) / exact SKU on complaints | 99.0% / 84.8% |
+| Causal churn | lift in lost-shopper rate after a missing item | **+4.6 pts ± 1.5** (true effect +12.2) |
+| Make-good list | silent shoppers listed / credit / expected margin won back | 2,004 / ₹1.3 L / ₹1.9 L |
+| | true churn rate, listed vs other silent shoppers | 31.8% vs 22.8% |
+| Ledger | billed lines a real phantom broke / real ones billed | 98.6% / 98.7% |
+| | total bill vs. lost-sale view | **₹21.0 L vs ₹4.9 L (4.3×)** |
 
-**At scale** (30 stores, 200k shoppers, 180 days, 5.7M order lines, about 12M rows
-in all) on the same 8 GB laptop: the load takes 28 s and the whole pipeline about
-6 minutes, most of it the per-SKU-day filter. The detector catches 90.8% of 2,624
-phantoms in 1.3 days, identity merges stay 99.8% correct, and the bill is ₹1.63 Cr
-against a ₹26 L lost-sale view. Full numbers are in [docs/BENCHMARK.md](docs/BENCHMARK.md).
+Complaint-rate stress test (each rate is a fresh world, same seed):
+
+| Shoppers who write in | 2% | 4% | 10% | 25% |
+|---|---|---|---|---|
+| Phantoms caught, all systems | 86.8% | 90.7% | 91.1% | 86.7% |
+| Days to alert | 1.7 | 1.6 | 1.9 | 1.8 |
+| Phantoms caught, sales only | 60.9% | 65.5% | 66.3% | 59.7% |
+
+**At scale** (30 stores, 200k shoppers, 180 days, 5.8M order lines, about 12M rows
+in all) on the same 8 GB laptop: the load takes 32 s and the engines about 5½
+minutes, most of it the per-SKU-day filter. The detector catches 92.0% of 2,575
+phantoms in 1.3 days at 89.8% precision, identity merges stay 99.8% correct,
+and the bill is ₹1.46 Cr against a ₹25 L lost-sale view. Full numbers are in
+[docs/BENCHMARK.md](docs/BENCHMARK.md).
 
 The causal estimate is conservative on purpose. Ripple only sees orders, so a
 shopper who leaves late in the window looks like one who is pausing. The bill
-understates the churn cost rather than inflating it. See
-[docs/METHOD.md](docs/METHOD.md).
+understates the churn cost rather than inflating it. After a swapped item the
+estimate is close to zero (+0.2 ± 1.4 pts, true +7.8), so swaps are billed for
+their margin and returns but add almost no churn cost. See
+[docs/METHOD.md](docs/METHOD.md), which also compares every simulator setting
+with published numbers and lists related work.
 
 ## How Ripple uses Exasol Personal
 
@@ -128,6 +170,7 @@ Everything after CSV generation happens inside the database:
 | `EDIT_DISTANCE`, `SOUNDEX`, `REGEXP_*` for entity resolution in SQL | [sql/20_identity.sql](sql/20_identity.sql) |
 | Window functions for gaps-and-islands episodes, trailing demand and traffic indices | [sql/40_detector.sql](sql/40_detector.sql) |
 | Stacked difference-in-differences in plain SQL | [sql/50_causal.sql](sql/50_causal.sql) |
+| Mann-Whitney AUC, baseline policies and the make-good ranking in SQL | [sql/95_baselines.sql](sql/95_baselines.sql), [sql/80_makegood.sql](sql/80_makegood.sql) |
 | Live interactive queries behind every view (the app shows Exasol's response time) | [ripple/app.py](ripple/app.py) |
 
 Stage timings land in `RIPPLE.RUN_TIMINGS` and on the Proof tab.
@@ -161,8 +204,10 @@ sql/            the engines, run in order by ripple.pipeline
   50_causal     matched natural-experiment churn estimate
   60_ledger     receipts and the bill per episode
   70_recount    morning recount list by expected saving
+  80_makegood   ranked offers for silent shoppers a phantom hit
   90_eval       scores every engine against RIPPLE_GT
-ripple/         db connection, loader, pipeline runner, one-command build, web API
+  95_baselines  zero-sales rule, AUC, recount policies, make-good targeting
+ripple/         db connection, loader, pipeline runner, one-command build, stress sweep, web API
 web/            single-page app (plain JS, hand-drawn SVG)
 docs/           METHOD.md, RUN_GUIDE.md, BENCHMARK.md, DEMO_SCRIPT.md
 ```

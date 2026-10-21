@@ -8,7 +8,7 @@ import argparse
 import time
 from pathlib import Path
 
-from generator.generate import SCALES, simulate
+from generator.generate import SCALES, TICKET_RATE, simulate
 from ripple import load, pipeline
 
 
@@ -16,13 +16,14 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--scale", choices=SCALES, default="demo")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--ticket-rate", type=float, default=TICKET_RATE)
     ap.add_argument("--skip-generate", action="store_true", help="reuse CSVs already in data/<scale>")
     args = ap.parse_args()
     out = Path("data") / args.scale
     t = time.time()
     if not args.skip_generate:
         print(f"== generating synthetic world ({args.scale}, seed {args.seed})")
-        simulate(SCALES[args.scale], args.seed, out)
+        simulate(SCALES[args.scale], args.seed, out, args.ticket_rate)
     print("== loading into Exasol")
     load.main(out)
     print("== running in-database engines")
