@@ -19,6 +19,19 @@ sees differently.
 
 ![Ripple's first screen: 542 silent stock-outs cost ₹21.0 lakh while reports show ₹4.9 lakh](docs/img/the-bill.png)
 
+## Submission materials
+
+| | |
+|---|---|
+| Demo video (3 min) | [Watch on Google Drive](https://drive.google.com/file/d/1Jh0X1C66Yqbr7MeSmww0IqxhV3cPcJwZ/view?usp=sharing) |
+| Pitch deck | [docs/Ripple_pitch_deck.pdf](docs/Ripple_pitch_deck.pdf) |
+| Run and deployment guide | [docs/RUN_GUIDE.md](docs/RUN_GUIDE.md) |
+| How it works | [docs/METHOD.md](docs/METHOD.md) |
+| Benchmarks | [docs/BENCHMARK.md](docs/BENCHMARK.md) |
+| Licence | [MIT](LICENSE) |
+
+Team: Debi Prasad Samal, Naveen Kumar, Nekita Saras Dhanabal.
+
 ## For evaluators: two minutes
 
 | Criterion | Where to look | What it shows |
