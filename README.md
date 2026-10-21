@@ -174,6 +174,10 @@ customer names are invented. No employer or proprietary data is used.
 Real-world figures quoted above come from the public sources linked beside
 them.
 
+## Team
+
+Debi Prasad Samal, Naveen Kumar and Nekita Saras Dhanabal.
+
 ## Licence
 
 [MIT](LICENSE)
